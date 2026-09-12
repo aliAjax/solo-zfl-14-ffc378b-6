@@ -357,6 +357,43 @@ textarea {
   min-height: 42px;
 }
 
+.record-ops {
+  display: inline-flex;
+  gap: 8px;
+}
+
+.link {
+  background: none;
+  color: #526d4e;
+  font-size: 0.78rem;
+  font-weight: 800;
+  padding: 0;
+}
+
+.link.danger {
+  color: #9c4632;
+}
+
+.record-entry.editing {
+  border-left-color: #b96f45;
+}
+
+.record-edit {
+  display: grid;
+  gap: 8px;
+}
+
+.edit-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.edit-actions .primary,
+.edit-actions .ghost {
+  min-height: 36px;
+  padding: 6px 12px;
+}
+
 .empty {
   align-items: center;
   color: #828a80;

@@ -100,6 +100,141 @@ test.describe("维修记录", () => {
     await expect(page.locator(".repair").nth(1).locator("h3")).toHaveText("阳台");
     await expect(page.locator(".repair").nth(1).locator(".no-record")).toHaveText("暂无处理记录");
   });
+
+  test("编辑记录后内容、结果与时间更新，并按新时间重新倒序，最近处理时间同步", async ({ page }) => {
+    const card = page.locator(".repair").first();
+
+    await card.locator(".record-form textarea[name='content']").fill("第一次处理：检查问题");
+    await card.locator(".record-form input[name='result']").fill("暂未解决");
+    await card.locator(".record-form button[type='submit']").click();
+
+    await card.locator(".record-form textarea[name='content']").fill("第二次处理：更换零件");
+    await card.locator(".record-form input[name='result']").fill("问题解决");
+    await card.locator(".record-form button[type='submit']").click();
+
+    let entries = card.locator(".record-entry");
+    await expect(entries.first().locator(".record-content")).toHaveText("第二次处理：更换零件");
+
+    // 编辑较早的第一条记录：时间改到未来，内容与结果一并调整
+    const oldEntry = entries.nth(1);
+    await oldEntry.locator("button[data-record-edit-btn]").click();
+
+    const editForm = card.locator(".record-edit");
+    await expect(editForm).toHaveCount(1);
+    await editForm.locator("input[name='time']").fill("2030-01-02T09:05");
+    await editForm.locator("textarea[name='content']").fill("追修：重新加固接口");
+    await editForm.locator("input[name='result']").fill("彻底解决");
+    await editForm.locator("button[type='submit']").click();
+
+    entries = card.locator(".record-entry");
+    await expect(entries).toHaveCount(2);
+    await expect(entries.first().locator(".record-content")).toHaveText("追修：重新加固接口");
+    await expect(entries.first().locator(".record-result")).toHaveText("处理结果：彻底解决");
+    await expect(entries.first().locator(".record-time")).toHaveText("2030-01-02 09:05");
+    await expect(entries.nth(1).locator(".record-content")).toHaveText("第二次处理：更换零件");
+
+    // 列表最近处理时间同步为编辑后的时间
+    await expect(card.locator(".last-time")).toHaveText("最近处理：2030-01-02 09:05");
+
+    const expectedTime = await entries.first().getAttribute("data-time");
+    const stored = await page.evaluate((key) => JSON.parse(localStorage.getItem(key)), STORAGE_KEY);
+    const edited = stored.repairs[0].records.find((r) => r.content === "追修：重新加固接口");
+    expect(edited.result).toBe("彻底解决");
+    expect(edited.time).toBe(Number(expectedTime));
+  });
+
+  test("取消编辑不会改动记录", async ({ page }) => {
+    const card = page.locator(".repair").first();
+
+    await card.locator(".record-form textarea[name='content']").fill("检查管道");
+    await card.locator(".record-form input[name='result']").fill("继续观察");
+    await card.locator(".record-form button[type='submit']").click();
+
+    await card.locator("button[data-record-edit-btn]").click();
+    await card.locator(".record-edit textarea[name='content']").fill("被改动但不应保存");
+    await card.locator(".record-edit button[data-record-cancel]").click();
+
+    await expect(card.locator(".record-edit")).toHaveCount(0);
+    await expect(card.locator(".record-content")).toHaveText("检查管道");
+    await expect(card.locator(".record-result")).toHaveText("处理结果：继续观察");
+  });
+
+  test("移除单条记录后列表更新，最近处理时间同步，全部移除后显示暂无记录", async ({ page }) => {
+    const card = page.locator(".repair").first();
+
+    async function addRecord(content, result) {
+      await card.locator(".record-form textarea[name='content']").fill(content);
+      await card.locator(".record-form input[name='result']").fill(result);
+      await card.locator(".record-form button[type='submit']").click();
+    }
+
+    await addRecord("第一次处理：检查问题", "暂未解决");
+    await addRecord("第二次处理：更换零件", "问题解决");
+
+    let entries = card.locator(".record-entry");
+    await expect(entries).toHaveCount(2);
+    const olderTime = (await entries.nth(1).locator(".record-time").textContent()).trim();
+
+    // 移除最新一条
+    await entries.first().locator("button[data-record-remove]").click();
+
+    entries = card.locator(".record-entry");
+    await expect(entries).toHaveCount(1);
+    await expect(entries.first().locator(".record-content")).toHaveText("第一次处理：检查问题");
+    await expect(card.locator(".last-time")).toHaveText(`最近处理：${olderTime}`);
+
+    // 移除最后一条
+    await entries.first().locator("button[data-record-remove]").click();
+    await expect(card.locator(".record-entry")).toHaveCount(0);
+    await expect(card.locator(".record-empty")).toBeVisible();
+    await expect(card.locator(".no-record")).toHaveText("暂无处理记录");
+
+    const stored = await page.evaluate((key) => JSON.parse(localStorage.getItem(key)), STORAGE_KEY);
+    expect(stored.repairs[0].records).toEqual([]);
+  });
+
+  test("编辑与移除在刷新后保持一致", async ({ page }) => {
+    const card = page.locator(".repair").first();
+
+    async function addRecord(content, result) {
+      await card.locator(".record-form textarea[name='content']").fill(content);
+      await card.locator(".record-form input[name='result']").fill(result);
+      await card.locator(".record-form button[type='submit']").click();
+    }
+
+    await addRecord("第一次处理：检查问题", "暂未解决");
+    await addRecord("第二次处理：更换零件", "问题解决");
+
+    // 编辑第一条记录的内容、结果、时间
+    await card.locator(".record-entry").nth(1).locator("button[data-record-edit-btn]").click();
+    await card.locator(".record-edit input[name='time']").fill("2031-05-06T14:30");
+    await card.locator(".record-edit textarea[name='content']").fill("返修：更换密封圈");
+    await card.locator(".record-edit input[name='result']").fill("已修复");
+    await card.locator(".record-edit button[type='submit']").click();
+
+    // 移除另一条
+    await card.locator(".record-entry").nth(1).locator("button[data-record-remove]").click();
+    await expect(card.locator(".record-entry")).toHaveCount(1);
+
+    await page.reload();
+
+    const reloaded = page.locator(".repair").first();
+    await expect(reloaded.locator(".record-entry")).toHaveCount(1);
+    await expect(reloaded.locator(".record-content")).toHaveText("返修：更换密封圈");
+    await expect(reloaded.locator(".record-result")).toHaveText("处理结果：已修复");
+    await expect(reloaded.locator(".record-time")).toHaveText("2031-05-06 14:30");
+    await expect(reloaded.locator(".last-time")).toHaveText("最近处理：2031-05-06 14:30");
+
+    const stored = await page.evaluate((key) => JSON.parse(localStorage.getItem(key)), STORAGE_KEY);
+    expect(stored.repairs[0].records).toHaveLength(1);
+    expect(stored.repairs[0].records[0]).toMatchObject({
+      content: "返修：更换密封圈",
+      result: "已修复"
+    });
+    expect(stored.repairs[0].records[0].time).toBe(
+      Number(await reloaded.locator(".record-entry").getAttribute("data-time"))
+    );
+  });
 });
 
 test.describe("既有功能回归", () => {

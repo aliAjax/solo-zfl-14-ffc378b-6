@@ -15,6 +15,7 @@ const priorities = {
 };
 
 let state = loadState();
+let editingRecordId = null;
 const app = document.querySelector("#app");
 
 function loadState() {
@@ -121,7 +122,7 @@ function renderRepair(repair) {
           <h4>维修记录${records.length ? `（${records.length}）` : ""}</h4>
           ${records.length ? `
             <ul class="record-list">
-              ${records.map(renderRecord).join("")}
+              ${records.map((record) => renderRecord(repair, record)).join("")}
             </ul>` : `<p class="record-empty">还没有处理记录，下方可添加第一次处理。</p>`}
           <form class="record-form" data-record-form="${repair.id}">
             <label>处理内容<textarea name="content" required placeholder="例如：拆开软管接口，发现密封圈老化"></textarea></label>
@@ -138,16 +139,45 @@ function renderRepair(repair) {
   `;
 }
 
-function renderRecord(record) {
+function renderRecord(repair, record) {
+  if (editingRecordId === record.id) {
+    return `
+    <li class="record-entry editing" data-record-id="${record.id}" data-time="${record.time}">
+      <form class="record-edit" data-record-edit="${repair.id}" data-record-id="${record.id}">
+        <label>处理时间<input name="time" type="datetime-local" required value="${escapeHtml(toInputValue(record.time))}"></label>
+        <label>处理内容<textarea name="content" required>${escapeHtml(record.content)}</textarea></label>
+        <label>处理结果<input name="result" required value="${escapeHtml(record.result)}"></label>
+        <div class="edit-actions">
+          <button class="primary" type="submit">保存修改</button>
+          <button class="ghost" type="button" data-record-cancel="${record.id}">取消</button>
+        </div>
+      </form>
+    </li>
+  `;
+  }
   return `
     <li class="record-entry" data-record-id="${record.id}" data-time="${record.time}">
       <div class="record-head">
         <time class="record-time" datetime="${new Date(record.time).toISOString()}">${formatTime(record.time)}</time>
+        <span class="record-ops">
+          <button class="link" type="button" data-record-edit-btn="${record.id}">编辑</button>
+          <button class="link danger" type="button" data-record-remove="${repair.id}" data-record-id="${record.id}">移除</button>
+        </span>
       </div>
       <p class="record-content">${escapeHtml(record.content)}</p>
       <p class="record-result"><span>处理结果：</span>${escapeHtml(record.result)}</p>
     </li>
   `;
+}
+
+function toInputValue(timestamp) {
+  const date = new Date(timestamp);
+  const pad = (value) => String(value).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function fromInputValue(value) {
+  return new Date(value).getTime();
 }
 
 function sortedRecords(repair) {
@@ -232,6 +262,46 @@ function bindEvents() {
         result: data.result.trim(),
         time: Date.now()
       });
+      saveState();
+      render();
+    });
+  });
+
+  document.querySelectorAll("[data-record-edit-btn]").forEach((button) => {
+    button.addEventListener("click", () => {
+      editingRecordId = button.dataset.recordEditBtn;
+      render();
+    });
+  });
+
+  document.querySelectorAll("[data-record-cancel]").forEach((button) => {
+    button.addEventListener("click", () => {
+      editingRecordId = null;
+      render();
+    });
+  });
+
+  document.querySelectorAll("[data-record-edit]").forEach((form) => {
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const repair = state.repairs.find((item) => item.id === form.dataset.recordEdit);
+      const record = repair.records.find((item) => item.id === form.dataset.recordId);
+      const data = Object.fromEntries(new FormData(form));
+      record.content = data.content.trim();
+      record.result = data.result.trim();
+      const nextTime = fromInputValue(data.time);
+      if (Number.isFinite(nextTime)) record.time = nextTime;
+      editingRecordId = null;
+      saveState();
+      render();
+    });
+  });
+
+  document.querySelectorAll("[data-record-remove]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const repair = state.repairs.find((item) => item.id === button.dataset.recordRemove);
+      repair.records = repair.records.filter((record) => record.id !== button.dataset.recordId);
+      if (editingRecordId === button.dataset.recordId) editingRecordId = null;
       saveState();
       render();
     });
