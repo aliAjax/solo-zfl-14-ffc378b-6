@@ -266,6 +266,97 @@ textarea {
   gap: 8px;
 }
 
+.last-time {
+  background: #e7efe3;
+  color: #3d6338;
+}
+
+.no-record {
+  background: #f1f1ec;
+  color: #8a9186;
+}
+
+.records {
+  border-top: 1px dashed #d3d9cf;
+  display: grid;
+  gap: 8px;
+  padding-top: 10px;
+}
+
+.records h4 {
+  font-size: 0.9rem;
+  margin: 0;
+}
+
+.record-list {
+  display: grid;
+  gap: 8px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.record-entry {
+  background: #f7f8f4;
+  border: 1px solid #e1e5dc;
+  border-left: 3px solid #526d4e;
+  border-radius: 6px;
+  display: grid;
+  gap: 4px;
+  padding: 8px 10px;
+}
+
+.record-head {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+}
+
+.record-time {
+  color: #6a7268;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.record-content,
+.record-result {
+  font-size: 0.85rem;
+  margin: 0;
+}
+
+.record-content {
+  color: #333a33;
+}
+
+.record-result {
+  color: #4f5a4d;
+}
+
+.record-result span {
+  color: #7b8478;
+}
+
+.record-empty {
+  color: #8a9186;
+  font-size: 0.82rem;
+  margin: 0;
+}
+
+.record-form {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 1fr 1fr auto;
+  align-items: end;
+}
+
+.record-form label {
+  font-size: 0.8rem;
+}
+
+.record-form textarea {
+  min-height: 42px;
+}
+
 .empty {
   align-items: center;
   color: #828a80;
@@ -298,5 +389,9 @@ textarea {
 
   .content {
     padding: 14px;
+  }
+
+  .record-form {
+    grid-template-columns: 1fr;
   }
 }

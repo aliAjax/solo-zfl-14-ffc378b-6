@@ -19,7 +19,14 @@ const app = document.querySelector("#app");
 
 function loadState() {
   const saved = localStorage.getItem(STORAGE_KEY);
-  if (saved) return JSON.parse(saved);
+  if (saved) {
+    const data = JSON.parse(saved);
+    data.repairs = (data.repairs || []).map((repair) => ({
+      ...repair,
+      records: Array.isArray(repair.records) ? repair.records : []
+    }));
+    return data;
+  }
   return {
     filter: "all",
     repairs: [
@@ -31,7 +38,8 @@ function loadState() {
         cost: 260,
         status: "todo",
         photo: "",
-        note: "先检查软管接口"
+        note: "先检查软管接口",
+        records: []
       }
     ]
   };
@@ -92,8 +100,10 @@ function render() {
 }
 
 function renderRepair(repair) {
+  const records = sortedRecords(repair);
+  const latest = records[0];
   return `
-    <article class="repair">
+    <article class="repair" data-repair="${repair.id}">
       <div class="photo">${repair.photo ? `<img src="${escapeHtml(repair.photo)}" alt="${escapeHtml(repair.location)}维修照片">` : "未添加照片"}</div>
       <div class="content">
         <div class="row">
@@ -105,7 +115,20 @@ function renderRepair(repair) {
         <div class="row">
           <span class="chip">预计 ¥${Number(repair.cost || 0)}</span>
           <span class="chip">${escapeHtml(repair.note || "暂无备注")}</span>
+          <span class="chip ${latest ? "last-time" : "no-record"}">${latest ? `最近处理：${formatTime(latest.time)}` : "暂无处理记录"}</span>
         </div>
+        <section class="records">
+          <h4>维修记录${records.length ? `（${records.length}）` : ""}</h4>
+          ${records.length ? `
+            <ul class="record-list">
+              ${records.map(renderRecord).join("")}
+            </ul>` : `<p class="record-empty">还没有处理记录，下方可添加第一次处理。</p>`}
+          <form class="record-form" data-record-form="${repair.id}">
+            <label>处理内容<textarea name="content" required placeholder="例如：拆开软管接口，发现密封圈老化"></textarea></label>
+            <label>处理结果<input name="result" required placeholder="例如：更换密封圈，已不再渗水"></label>
+            <button class="ghost" type="submit">添加记录</button>
+          </form>
+        </section>
         <div class="actions">
           <select data-status="${repair.id}">${renderStatusOptions(repair.status)}</select>
           <button class="ghost" data-delete="${repair.id}">删除</button>
@@ -113,6 +136,32 @@ function renderRepair(repair) {
       </div>
     </article>
   `;
+}
+
+function renderRecord(record) {
+  return `
+    <li class="record-entry" data-record-id="${record.id}" data-time="${record.time}">
+      <div class="record-head">
+        <time class="record-time" datetime="${new Date(record.time).toISOString()}">${formatTime(record.time)}</time>
+      </div>
+      <p class="record-content">${escapeHtml(record.content)}</p>
+      <p class="record-result"><span>处理结果：</span>${escapeHtml(record.result)}</p>
+    </li>
+  `;
+}
+
+function sortedRecords(repair) {
+  return (repair.records || []).slice().sort((a, b) => b.time - a.time);
+}
+
+function latestRecordTime(repair) {
+  return repair.records.length ? Math.max(...repair.records.map((record) => record.time)) : null;
+}
+
+function formatTime(timestamp) {
+  const date = new Date(timestamp);
+  const pad = (value) => String(value).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
 function renderStatusOptions(selected) {
@@ -140,7 +189,8 @@ function bindEvents() {
       cost: Number(data.cost || 0),
       status: data.status,
       photo: data.photo.trim(),
-      note: data.note.trim()
+      note: data.note.trim(),
+      records: []
     });
     saveState();
     render();
@@ -170,11 +220,37 @@ function bindEvents() {
       render();
     });
   });
+
+  document.querySelectorAll("[data-record-form]").forEach((form) => {
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const repair = state.repairs.find((item) => item.id === form.dataset.recordForm);
+      const data = Object.fromEntries(new FormData(form));
+      repair.records.unshift({
+        id: crypto.randomUUID(),
+        content: data.content.trim(),
+        result: data.result.trim(),
+        time: Date.now()
+      });
+      saveState();
+      render();
+    });
+  });
 }
 
 function filteredRepairs() {
-  if (state.filter === "all") return state.repairs;
-  return state.repairs.filter((repair) => repair.status === state.filter);
+  const list = state.filter === "all"
+    ? state.repairs.slice()
+    : state.repairs.filter((repair) => repair.status === state.filter);
+  // 有记录的事项按最近处理时间倒序在前，没有任何记录的排在后面
+  return list.sort((a, b) => {
+    const aTime = latestRecordTime(a);
+    const bTime = latestRecordTime(b);
+    if (aTime === null && bTime === null) return 0;
+    if (aTime === null) return 1;
+    if (bTime === null) return -1;
+    return bTime - aTime;
+  });
 }
 
 function escapeHtml(value) {
